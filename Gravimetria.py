@@ -846,6 +846,19 @@ with tabs[0]:
                 fmt_dens(gamma_h), fmt_dens(gamma_d),
             ],
         }
+# --- SLIDERS DINÁMICOS (Línea 850 aprox) ---
+st.markdown("### 🎚️ Ajuste Visual de Fases")
+c1, c2, c3 = st.columns(3)
+with c1:
+    d["vs"] = st.slider("Vol. Sólido (Vs)", 0.1, 10.0, float(d["vs"]), key="s_vs")
+with c2:
+    d["vw"] = st.slider("Vol. Agua (Vw)", 0.0, 10.0, float(d["vw"]), key="s_vw")
+with c3:
+    d["va"] = st.slider("Vol. Aire (Va)", 0.0, 10.0, float(d["va"]), key="s_va")
+
+# Recalcular totales para el gráfico
+d["vv"] = d["vw"] + d["va"]
+d["vt"] = d["vs"] + d["vv"]
 
         df_res = pd.DataFrame(resultados)
         st.dataframe(df_res, use_container_width=True, hide_index=True)
