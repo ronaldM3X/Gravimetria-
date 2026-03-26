@@ -595,13 +595,20 @@ with tabs[0]:
     calcular = st.button("🚀 Calcular Base")
 
     if calcular:
-        tiene_peso = any(k in inputs and inputs[k] > 0 for k in ["ws", "wm", "ww"])
-        tiene_volumen = any(
-            k in inputs and inputs[k] > 0 for k in ["vs", "vt", "vv", "vw", "va"]
-        )
+        # Capturar los inputs directamente desde session_state para garantizar valores actuales
+        inputs_real = {}
+        for clave in seleccionados:
+            key = f"in_{clave}"
+            val = st.session_state.get(key, 0.0)
+            inputs_real[clave] = val
+
+        st.session_state["debug_inputs"] = dict(inputs_real)
+
+        tiene_peso = any(inputs_real.get(k, 0) > 0 for k in ["ws", "wm", "ww"])
+        tiene_volumen = any(inputs_real.get(k, 0) > 0 for k in ["vs", "vt", "vv", "vw", "va"])
 
         if modo == "Metas (Laboratorio)" and not (tiene_peso or tiene_volumen):
-            st.session_state["error_calculo"] = "❌ Datos insuficientes. Ingresa al menos un Peso o un Volumen con valor mayor a cero."
+            st.session_state["error_calculo"] = "❌ Datos insuficientes. Ingresa al menos un Peso (Ws, Wt o Ww) o un Volumen (Vs, Vt, Vv, Vw o Va) mayor a cero."
             st.session_state.pop("resultado", None)
         else:
             st.session_state.pop("error_calculo", None)
@@ -610,7 +617,7 @@ with tabs[0]:
             if modo == "Académico (Base Vs=1)":
                 d["vs"] = 1.0
 
-            for k, v in inputs.items():
+            for k, v in inputs_real.items():
                 d[k] = v / 100.0 if k in ["w", "n", "s"] and v > 1.0 else v
 
             # ── MOTOR DE INFERENCIA ──────────────────────────────────────────
@@ -723,6 +730,16 @@ with tabs[0]:
     # ── MOSTRAR ERROR SI LO HAY ───────────────────────────────────────────────
     if "error_calculo" in st.session_state:
         st.error(st.session_state["error_calculo"])
+
+    # ── DEBUG: MOSTRAR INPUTS RECIBIDOS ──────────────────────────────────────
+    if "debug_inputs" in st.session_state and st.session_state["debug_inputs"]:
+        with st.expander("🔍 Diagnóstico — valores recibidos por el motor", expanded=True):
+            di = st.session_state["debug_inputs"]
+            if di:
+                for k, v in di.items():
+                    st.write(f"**{diccionario_maestro.get(k, k)}** → `{v}`")
+            else:
+                st.warning("El motor no recibió ningún valor. ¿Seleccionaste las variables y escribiste los datos?")
 
     # ── MOSTRAR RESULTADOS (fuera del bloque del botón) ───────────────────────
     if "resultado" in st.session_state:
