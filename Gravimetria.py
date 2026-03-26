@@ -11,6 +11,39 @@ st.set_page_config(
     page_title="Ronald Saenz – Gravimetría", layout="wide", page_icon="🏗️"
 )
 
+# 1. FUNCIÓN PARA REINICIAR (Ponla arriba, cerca de las configuraciones)
+def reiniciar_valores():
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
+# 2. BOTÓN DE REINICIO EN LA BARRA LATERAL
+if st.sidebar.button("♻️ Reiniciar Todo", on_click=reiniciar_valores):
+    st.sidebar.success("Valores restablecidos")
+
+# ... (Aquí iría tu lógica de cálculo) ...
+
+# 3. SLIDERS PARA EL DIAGRAMA DE FASES (Dentro de la pestaña de cálculos o resultados)
+st.markdown("### 🎚️ Ajuste Dinámico de Fases")
+col_s1, col_s2, col_s3 = st.columns(3)
+
+with col_s1:
+    # Slider para el volumen de sólidos (Vs)
+    nuevo_vs = st.slider("Ajustar Vs", min_value=0.1, max_value=10.0, value=float(d.get('vs', 1.0)), step=0.1, key="slider_vs")
+with col_s2:
+    # Slider para el volumen de agua (Vw)
+    nuevo_vw = st.slider("Ajustar Vw", min_value=0.0, max_value=10.0, value=float(d.get('vw', 0.5)), step=0.1, key="slider_vw")
+with col_s3:
+    # Slider para el volumen de aire (Va)
+    nuevo_va = st.slider("Ajustar Va", min_value=0.0, max_value=10.0, value=float(d.get('va', 0.2)), step=0.1, key="slider_va")
+
+# Actualizamos los valores del diccionario antes de dibujar el gráfico
+d['vs'], d['vw'], d['va'] = nuevo_vs, nuevo_vw, nuevo_va
+d['vv'] = d['vw'] + d['va']
+d['vt'] = d['vs'] + d['vv']
+
+# 4. DIBUJAR EL GRÁFICO (Con la KEY única para evitar el error anterior)
+st.plotly_chart(fig2, use_container_width=True, key="diagrama_dinamico_final")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. LOGO UPB + ENCABEZADO
