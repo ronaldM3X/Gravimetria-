@@ -2,203 +2,667 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
-import io
+import base64, io
 
-# 1. CONFIGURACIÓN
-st.set_page_config(page_title="Geotecnia Suite Master v23.4", layout="wide", page_icon="🏗️")
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. CONFIGURACIÓN DE PÁGINA
+# ─────────────────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="Ronald Saenz – Gravimetría", layout="wide", page_icon="🏗️"
+)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. LOGO UPB + ENCABEZADO
+# ─────────────────────────────────────────────────────────────────────────────
+def get_logo_b64():
+    try:
+        with open("assets/upb_logo.svg", "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return None
+
+
+logo_b64 = get_logo_b64()
+logo_html = (
+    f'<img src="data:image/svg+xml;base64,{logo_b64}" style="height:90px; margin-right:24px; vertical-align:middle;">'
+    if logo_b64
+    else '<span style="font-size:3rem; margin-right:16px; vertical-align:middle;">🏛️</span>'
+)
+
+st.markdown(
+    f"""
+<div style="display:flex; align-items:center; padding:18px 0 8px 0; border-bottom:3px solid #003087; margin-bottom:18px;">
+    {logo_html}
+    <div>
+        <div style="font-size:2.4rem; font-weight:800; color:#003087; line-height:1.1; letter-spacing:-0.5px;">Ronald Saenz</div>
+        <div style="font-size:1.25rem; font-weight:500; color:#6b7280; letter-spacing:2px; margin-top:2px;">GRAVIMETRÍA</div>
+        <div style="font-size:0.78rem; color:#9ca3af; margin-top:2px;">Universidad Pontificia Bolivariana · Suite Geotécnica</div>
+    </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. PANEL DE CONTROL (SIDEBAR)
+# ─────────────────────────────────────────────────────────────────────────────
 st.sidebar.title("👨‍🏫 Panel de Control")
-modo = st.sidebar.radio("Selecciona el Modo:", ("Metas (Laboratorio)", "Académico (Base Vs=1)"))
+modo = st.sidebar.radio(
+    "Selecciona el Modo:", ("Metas (Laboratorio)", "Académico (Base Vs=1)")
+)
 st.sidebar.markdown("---")
 
-st.title(f"🏗️ Geotecnia Master - Modo {modo.split()[0]}")
+# ── SELECTOR DE UNIDADES ──────────────────────────────────────────────────────
+st.sidebar.subheader("⚖️ Unidades")
+u_peso = st.sidebar.selectbox("Unidad de Peso", ["g", "kg", "N", "kN"], index=0)
+u_vol = st.sidebar.selectbox("Unidad de Volumen", ["cm³", "dm³ (L)", "m³"], index=0)
+u_dens = st.sidebar.selectbox(
+    "Unidad de Densidad / Peso Unitario", ["g/cm³", "kN/m³", "kg/m³"], index=0
+)
+st.sidebar.markdown("---")
+st.sidebar.caption(
+    "Los cálculos internos se realizan en g y cm³. Los resultados se convierten a la unidad seleccionada al mostrarlos."
+)
 
-# --- PESTAÑAS ---
+# Factores de conversión (desde g o cm³ internos)
+PESO_FACTOR = {"g": 1.0, "kg": 1e-3, "N": 9.80665e-3, "kN": 9.80665e-6}
+VOL_FACTOR = {"cm³": 1.0, "dm³ (L)": 1e-3, "m³": 1e-6}
+DENS_FACTOR = {"g/cm³": 1.0, "kN/m³": 9.80665, "kg/m³": 1e3}
+
+fp = PESO_FACTOR[u_peso]
+fv = VOL_FACTOR[u_vol]
+fd = DENS_FACTOR[u_dens]
+
+
+def fmt_peso(v):
+    return f"{v * fp:.4f} {u_peso}"
+
+
+def fmt_vol(v):
+    return f"{v * fv:.4f} {u_vol}"
+
+
+def fmt_dens(v):
+    return f"{v * fd:.4f} {u_dens}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. DIAGRAMA DE FASES PROFESIONAL (función definida antes de usarla)
+# ─────────────────────────────────────────────────────────────────────────────
+def build_phase_diagram(f, gamma_h, gamma_d, u_vol, u_peso, u_dens, fv, fp, fd):
+    vt = f["vt"] if f["vt"] > 0 else 1.0
+    vs_n = f["vs"] / vt
+    vw_n = f["vw"] / vt
+    va_n = f["va"] / vt
+
+    y_s_bot, y_s_top = 0.0, vs_n
+    y_w_bot, y_w_top = vs_n, vs_n + vw_n
+    y_a_bot, y_a_top = vs_n + vw_n, 1.0
+
+    wt = f["wm"] if f["wm"] > 0 else 1e-9
+    ws_n = f["ws"] / wt
+    ww_n = f["ww"] / wt if wt > 0 else 0
+
+    COL_W = 0.28
+    COL_P = 0.28
+    GAP = 0.08
+    X_VOL = 0.12
+    X_PES = X_VOL + COL_W + GAP
+    ANN_L = 0.02
+    ANN_R = X_PES + COL_P + 0.02
+
+    C_SOLIDOS = "#8B5E3C"
+    C_AGUA = "#4A90D9"
+    C_AIRE = "#D6EAF8"
+    C_BORDE = "#2C3E50"
+
+    shapes = []
+    annotations = []
+
+    shapes.append(
+        dict(
+            type="rect",
+            x0=X_VOL,
+            x1=X_VOL + COL_W,
+            y0=y_s_bot,
+            y1=y_s_top,
+            fillcolor=C_SOLIDOS,
+            line=dict(color=C_BORDE, width=1.5),
+        )
+    )
+    shapes.append(
+        dict(
+            type="rect",
+            x0=X_VOL,
+            x1=X_VOL + COL_W,
+            y0=y_w_bot,
+            y1=y_w_top,
+            fillcolor=C_AGUA,
+            line=dict(color=C_BORDE, width=1.5),
+        )
+    )
+    shapes.append(
+        dict(
+            type="rect",
+            x0=X_VOL,
+            x1=X_VOL + COL_W,
+            y0=y_a_bot,
+            y1=y_a_top,
+            fillcolor=C_AIRE,
+            line=dict(color=C_BORDE, width=1.5),
+        )
+    )
+
+    shapes.append(
+        dict(
+            type="rect",
+            x0=X_PES,
+            x1=X_PES + COL_P,
+            y0=y_s_bot,
+            y1=y_s_top,
+            fillcolor=C_SOLIDOS,
+            line=dict(color=C_BORDE, width=1.5),
+        )
+    )
+    shapes.append(
+        dict(
+            type="rect",
+            x0=X_PES,
+            x1=X_PES + COL_P,
+            y0=y_w_bot,
+            y1=y_w_top,
+            fillcolor=C_AGUA,
+            line=dict(color=C_BORDE, width=1.5),
+        )
+    )
+    shapes.append(
+        dict(
+            type="rect",
+            x0=X_PES,
+            x1=X_PES + COL_P,
+            y0=y_a_bot,
+            y1=y_a_top,
+            fillcolor="white",
+            line=dict(color=C_BORDE, width=1.5, dash="dot"),
+        )
+    )
+
+    shapes.append(
+        dict(
+            type="line",
+            x0=X_VOL,
+            x1=X_VOL + COL_W,
+            y0=vs_n,
+            y1=vs_n,
+            line=dict(color=C_BORDE, width=2),
+        )
+    )
+
+    cx_vol = X_VOL + COL_W / 2
+    if va_n > 0.04:
+        annotations.append(
+            dict(
+                x=cx_vol,
+                y=(y_a_bot + y_a_top) / 2,
+                text=f"<b>AIRE</b><br>Va={f['va'] * fv:.3f} {u_vol}",
+                showarrow=False,
+                font=dict(size=12, color="#1a5276"),
+                align="center",
+            )
+        )
+    if vw_n > 0.04:
+        annotations.append(
+            dict(
+                x=cx_vol,
+                y=(y_w_bot + y_w_top) / 2,
+                text=f"<b>AGUA</b><br>Vw={f['vw'] * fv:.3f} {u_vol}",
+                showarrow=False,
+                font=dict(size=12, color="white"),
+                align="center",
+            )
+        )
+    if vs_n > 0.04:
+        annotations.append(
+            dict(
+                x=cx_vol,
+                y=(y_s_bot + y_s_top) / 2,
+                text=f"<b>SÓLIDOS</b><br>Vs={f['vs'] * fv:.3f} {u_vol}",
+                showarrow=False,
+                font=dict(size=12, color="white"),
+                align="center",
+            )
+        )
+
+    cx_pes = X_PES + COL_P / 2
+    if va_n > 0.04:
+        annotations.append(
+            dict(
+                x=cx_pes,
+                y=(y_a_bot + y_a_top) / 2,
+                text="<b>W = 0</b>",
+                showarrow=False,
+                font=dict(size=11, color="#7f8c8d"),
+                align="center",
+            )
+        )
+    if ww_n > 0.04:
+        annotations.append(
+            dict(
+                x=cx_pes,
+                y=(y_w_bot + y_w_top) / 2,
+                text=f"<b>AGUA</b><br>Ww={f['ww'] * fp:.3f} {u_peso}",
+                showarrow=False,
+                font=dict(size=12, color="white"),
+                align="center",
+            )
+        )
+    if ws_n > 0.04:
+        annotations.append(
+            dict(
+                x=cx_pes,
+                y=(y_s_bot + y_s_top) / 2,
+                text=f"<b>SÓLIDOS</b><br>Ws={f['ws'] * fp:.3f} {u_peso}",
+                showarrow=False,
+                font=dict(size=12, color="white"),
+                align="center",
+            )
+        )
+
+    ann_x = ANN_L
+
+    def bracket_ann(y0, y1, label, color="#2c3e50"):
+        mid = (y0 + y1) / 2
+        shapes.append(
+            dict(
+                type="line",
+                x0=ann_x + 0.03,
+                x1=ann_x + 0.03,
+                y0=y0,
+                y1=y1,
+                line=dict(color=color, width=2),
+            )
+        )
+        shapes.append(
+            dict(
+                type="line",
+                x0=ann_x + 0.03,
+                x1=X_VOL,
+                y0=y0,
+                y1=y0,
+                line=dict(color=color, width=1.5),
+            )
+        )
+        shapes.append(
+            dict(
+                type="line",
+                x0=ann_x + 0.03,
+                x1=X_VOL,
+                y0=y1,
+                y1=y1,
+                line=dict(color=color, width=1.5),
+            )
+        )
+        annotations.append(
+            dict(
+                x=ann_x,
+                y=mid,
+                text=f"<b>{label}</b>",
+                showarrow=False,
+                font=dict(size=11, color=color),
+                xanchor="right",
+            )
+        )
+
+    if va_n > 0.01:
+        bracket_ann(y_a_bot, y_a_top, f"Va<br>{f['va'] * fv:.3f} {u_vol}", "#1a5276")
+    if (va_n + vw_n) > 0.01:
+        bracket_ann(vs_n, 1.0, f"Vv<br>{f['vv'] * fv:.3f} {u_vol}", "#117864")
+    if vw_n > 0.01:
+        bracket_ann(y_w_bot, y_w_top, f"Vw<br>{f['vw'] * fv:.3f} {u_vol}", "#154360")
+    annotations.append(
+        dict(
+            x=ann_x,
+            y=(y_s_bot + y_s_top) / 2,
+            text=f"<b>Vs</b><br>{f['vs'] * fv:.3f} {u_vol}",
+            showarrow=False,
+            font=dict(size=11, color="#6e2f1a"),
+            xanchor="right",
+        )
+    )
+
+    shapes.append(
+        dict(
+            type="line",
+            x0=ann_x - 0.01,
+            x1=ann_x - 0.01,
+            y0=0,
+            y1=1,
+            line=dict(color="#2c3e50", width=2.5),
+        )
+    )
+    shapes.append(
+        dict(
+            type="line",
+            x0=ann_x - 0.01,
+            x1=ann_x + 0.01,
+            y0=0,
+            y1=0,
+            line=dict(color="#2c3e50", width=2),
+        )
+    )
+    shapes.append(
+        dict(
+            type="line",
+            x0=ann_x - 0.01,
+            x1=ann_x + 0.01,
+            y0=1,
+            y1=1,
+            line=dict(color="#2c3e50", width=2),
+        )
+    )
+    annotations.append(
+        dict(
+            x=ann_x - 0.04,
+            y=0.5,
+            text=f"<b>Vt</b><br>{f['vt'] * fv:.3f} {u_vol}",
+            showarrow=False,
+            font=dict(size=12, color="#1b2631"),
+            xanchor="right",
+        )
+    )
+
+    ann_rx = ANN_R + 0.05
+
+    def bracket_ann_r(y0, y1, label, color="#2c3e50"):
+        mid = (y0 + y1) / 2
+        shapes.append(
+            dict(
+                type="line",
+                x0=ann_rx - 0.03,
+                x1=ann_rx - 0.03,
+                y0=y0,
+                y1=y1,
+                line=dict(color=color, width=2),
+            )
+        )
+        shapes.append(
+            dict(
+                type="line",
+                x0=X_PES + COL_P,
+                x1=ann_rx - 0.03,
+                y0=y0,
+                y1=y0,
+                line=dict(color=color, width=1.5),
+            )
+        )
+        shapes.append(
+            dict(
+                type="line",
+                x0=X_PES + COL_P,
+                x1=ann_rx - 0.03,
+                y0=y1,
+                y1=y1,
+                line=dict(color=color, width=1.5),
+            )
+        )
+        annotations.append(
+            dict(
+                x=ann_rx,
+                y=mid,
+                text=f"<b>{label}</b>",
+                showarrow=False,
+                font=dict(size=11, color=color),
+                xanchor="left",
+            )
+        )
+
+    if ww_n > 0.01:
+        bracket_ann_r(y_w_bot, y_w_top, f"Ww<br>{f['ww'] * fp:.3f} {u_peso}", "#154360")
+    bracket_ann_r(y_s_bot, y_s_top, f"Ws<br>{f['ws'] * fp:.3f} {u_peso}", "#6e2f1a")
+
+    shapes.append(
+        dict(
+            type="line",
+            x0=ann_rx + 0.04,
+            x1=ann_rx + 0.04,
+            y0=0,
+            y1=1,
+            line=dict(color="#2c3e50", width=2.5),
+        )
+    )
+    shapes.append(
+        dict(
+            type="line",
+            x0=ann_rx + 0.02,
+            x1=ann_rx + 0.04,
+            y0=0,
+            y1=0,
+            line=dict(color="#2c3e50", width=2),
+        )
+    )
+    shapes.append(
+        dict(
+            type="line",
+            x0=ann_rx + 0.02,
+            x1=ann_rx + 0.04,
+            y0=1,
+            y1=1,
+            line=dict(color="#2c3e50", width=2),
+        )
+    )
+    annotations.append(
+        dict(
+            x=ann_rx + 0.07,
+            y=0.5,
+            text=f"<b>Wt</b><br>{f['wm'] * fp:.3f} {u_peso}",
+            showarrow=False,
+            font=dict(size=12, color="#1b2631"),
+            xanchor="left",
+        )
+    )
+
+    annotations.append(
+        dict(
+            x=cx_vol,
+            y=1.06,
+            text="<b>VOLÚMENES</b>",
+            showarrow=False,
+            font=dict(size=14, color="#2c3e50"),
+            xanchor="center",
+        )
+    )
+    annotations.append(
+        dict(
+            x=cx_pes,
+            y=1.06,
+            text="<b>PESOS</b>",
+            showarrow=False,
+            font=dict(size=14, color="#2c3e50"),
+            xanchor="center",
+        )
+    )
+
+    formulas = [
+        f"<b>e</b> = Vv/Vs = <b>{f['e']:.4f}</b>",
+        f"<b>n</b> = Vv/Vt = <b>{f['n'] * 100:.2f}%</b>",
+        f"<b>S</b> = Vw/Vv = <b>{f['s'] * 100:.2f}%</b>",
+        f"<b>w</b> = Ww/Ws = <b>{f['w'] * 100:.2f}%</b>",
+        f"<b>Gs</b> = Ws/Vs = <b>{f['gs']:.3f}</b>",
+        f"<b>γh</b> = Wt/Vt = <b>{gamma_h * fd:.4f} {u_dens}</b>",
+        f"<b>γd</b> = Ws/Vt = <b>{gamma_d * fd:.4f} {u_dens}</b>",
+    ]
+    annotations.append(
+        dict(
+            x=0.78,
+            y=1.06,
+            text="<b>Relaciones Fundamentales</b>",
+            showarrow=False,
+            font=dict(size=13, color="#003087"),
+            xanchor="left",
+        )
+    )
+    annotations.append(
+        dict(
+            x=0.78,
+            y=0.5,
+            text="<br>".join(formulas),
+            showarrow=False,
+            font=dict(size=11.5, color="#1b2631"),
+            align="left",
+            xanchor="left",
+            bgcolor="#fdfefe",
+            bordercolor="#aed6f1",
+            borderwidth=1.5,
+            borderpad=8,
+        )
+    )
+
+    fig = go.Figure()
+    fig.update_layout(
+        shapes=shapes,
+        annotations=annotations,
+        height=520,
+        margin=dict(l=10, r=10, t=60, b=20),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis=dict(
+            range=[0, 1.05],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            fixedrange=True,
+        ),
+        yaxis=dict(
+            range=[-0.04, 1.12],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            fixedrange=True,
+        ),
+        showlegend=False,
+        font=dict(family="Arial, sans-serif"),
+    )
+    return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. DICCIONARIO MAESTRO
+# ─────────────────────────────────────────────────────────────────────────────
+diccionario_maestro = {
+    "gs": "Gs (Gravedad específica)",
+    "e": "e (Relación de vacíos)",
+    "n": "n (Porosidad %)",
+    "w": "w (Contenido de humedad %)",
+    "s": "S (Grado de saturación %)",
+    "wm": "Wt (Peso total)",
+    "ws": "Ws (Peso sólidos)",
+    "ww": "Ww (Peso agua)",
+    "vt": "Vt (Volumen total)",
+    "vs": "Vs (Volumen sólidos)",
+    "vv": "Vv (Volumen vacíos)",
+    "vw": "Vw (Volumen agua)",
+    "va": "Va (Volumen aire)",
+    "gh": "γh (Unitario húmedo)",
+    "gd": "γd (Unitario seco)",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. PESTAÑAS PRINCIPALES
+# ─────────────────────────────────────────────────────────────────────────────
 tabs = st.tabs(["🧩 Gravimetría & Fases", "📥 Reporte Final"])
 
-# --- PESTAÑA 1: GRAVIMETRÍA ---
+# ══════════════════════════════════════════════════════════════════════════════
+# PESTAÑA 1: GRAVIMETRÍA
+# ══════════════════════════════════════════════════════════════════════════════
 with tabs[0]:
-    diccionario_maestro = {
-        "gs": "Gs (Gravedad específica)", "e": "e (Relación de vacíos)", "n": "n (Porosidad %)",
-        "w": "w (Contenido de humedad %)", "s": "S (Grado de saturación %)", "wm": "Wt (Peso total)",
-        "ws": "Ws (Peso sólidos)", "ww": "Ww (Peso agua)", "vt": "Vt (Volumen total)",
-        "vs": "Vs (Volumen sólidos)", "vv": "Vv (Volumen vacíos)", "vw": "Vw (Volumen agua)",
-        "va": "Va (Volumen aire)", "gh": "γ (Unitario húmedo)", "gd": "γd (Unitario seco)"
-    }
-
     st.subheader("📥 1. Entrada de Datos Iniciales")
-    seleccionados = st.multiselect("Variables conocidas:", options=list(diccionario_maestro.keys()), format_func=lambda x: diccionario_maestro[x])
-    
+    seleccionados = st.multiselect(
+        "Variables conocidas:",
+        options=list(diccionario_maestro.keys()),
+        format_func=lambda x: diccionario_maestro[x],
+    )
+
     inputs = {}
     cols_in = st.columns(3)
     for i, clave in enumerate(seleccionados):
-        inputs[clave] = cols_in[i%3].number_input(f"{diccionario_maestro[clave]}", value=0.0, format="%.4f", key=f"in_{clave}")
+        inputs[clave] = cols_in[i % 3].number_input(
+            f"{diccionario_maestro[clave]}", value=0.0, format="%.4f", key=f"in_{clave}"
+        )
 
     if st.button("🚀 Calcular Base"):
-        tiene_peso = any(k in inputs and inputs[k] > 0 for k in ['ws', 'wm', 'ww'])
-        tiene_volumen = any(k in inputs and inputs[k] > 0 for k in ['vs', 'vt', 'vv', 'vw', 'va'])
-        
+        tiene_peso = any(k in inputs and inputs[k] > 0 for k in ["ws", "wm", "ww"])
+        tiene_volumen = any(
+            k in inputs and inputs[k] > 0 for k in ["vs", "vt", "vv", "vw", "va"]
+        )
+
         if modo == "Metas (Laboratorio)" and not (tiene_peso or tiene_volumen):
-            st.error("❌ Datos insuficientes para magnitudes reales. Por favor, ingresa al menos un Peso o un Volumen.")
+            st.error("❌ Datos insuficientes. Ingresa al menos un Peso o un Volumen.")
             st.stop()
 
         d = {k: 0.0 for k in diccionario_maestro.keys()}
-        if modo == "Académico (Base Vs=1)": d['vs'] = 1.0
-        
+        if modo == "Académico (Base Vs=1)":
+            d["vs"] = 1.0
+
         for k, v in inputs.items():
-            d[k] = v / 100 if k in ['w', 'n', 's'] and v > 1.0 else v
-        
-        # MOTOR DE INFERENCIA COMPLETO CON RETROALIMENTACIÓN
+            d[k] = v / 100 if k in ["w", "n", "s"] and v > 1.0 else v
+
+        # ── MOTOR DE INFERENCIA ──────────────────────────────────────────────
         for _ in range(100):
-            # ── Fase 1: Gs, Ws, Vs (triángulo fundamental) ──────────────────
-            if d['gs'] > 0 and d['ws'] > 0 and d['vs'] == 0: d['vs'] = d['ws'] / d['gs']
-            if d['gs'] > 0 and d['vs'] > 0 and d['ws'] == 0: d['ws'] = d['gs'] * d['vs']
-            if d['ws'] > 0 and d['vs'] > 0 and d['gs'] == 0: d['gs'] = d['ws'] / d['vs']
+            if d["gs"] > 0 and d["ws"] > 0 and d["vs"] == 0:
+                d["vs"] = d["ws"] / d["gs"]
+            if d["gs"] > 0 and d["vs"] > 0 and d["ws"] == 0:
+                d["ws"] = d["gs"] * d["vs"]
+            if d["ws"] > 0 and d["vs"] > 0 and d["gs"] == 0:
+                d["gs"] = d["ws"] / d["vs"]
 
-            # ── Fase 2: Relación e ↔ Vv, Vs ─────────────────────────────────
-            if d['vv'] > 0 and d['vs'] > 0 and d['e'] == 0:  d['e'] = d['vv'] / d['vs']
-            if d['e']  > 0 and d['vs'] > 0 and d['vv'] == 0: d['vv'] = d['e'] * d['vs']
-            if d['e']  > 0 and d['vv'] > 0 and d['vs'] == 0: d['vs'] = d['vv'] / d['e']
+            if d["vv"] > 0 and d["vs"] > 0 and d["e"] == 0:
+                d["e"] = d["vv"] / d["vs"]
+            if d["e"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                d["vv"] = d["e"] * d["vs"]
+            if d["e"] > 0 and d["vv"] > 0 and d["vs"] == 0:
+                d["vs"] = d["vv"] / d["e"]
 
-            # ── Fase 3: Porosidad n ↔ e, Vt, Vv, Vs ─────────────────────────
-            if d['e'] > 0 and d['n'] == 0:
-                d['n'] = d['e'] / (1 + d['e'])
-            if 0 < d['n'] < 1 and d['e'] == 0:
-                d['e'] = d['n'] / (1 - d['n'])
-            if d['n'] > 0 and d['vt'] > 0 and d['vv'] == 0:
-                d['vv'] = d['n'] * d['vt']
-            if d['n'] > 0 and d['vt'] > 0 and d['vs'] == 0:
-                d['vs'] = (1 - d['n']) * d['vt']
-            if d['n'] > 0 and d['vs'] > 0 and d['vt'] == 0:
-                d['vt'] = d['vs'] / (1 - d['n'])
-            if d['n'] > 0 and d['vv'] > 0 and d['vt'] == 0:
-                d['vt'] = d['vv'] / d['n']
-            if d['vt'] > 0 and d['vv'] > 0 and d['n'] == 0:
-                d['n'] = d['vv'] / d['vt']
+            if d["e"] > 0 and d["n"] == 0:
+                d["n"] = d["e"] / (1 + d["e"])
+            if 0 < d["n"] < 1 and d["e"] == 0:
+                d["e"] = d["n"] / (1 - d["n"])
+            if d["n"] > 0 and d["vt"] > 0 and d["vv"] == 0:
+                d["vv"] = d["n"] * d["vt"]
+            if d["n"] > 0 and d["vt"] > 0 and d["vs"] == 0:
+                d["vs"] = (1 - d["n"]) * d["vt"]
+            if d["n"] > 0 and d["vs"] > 0 and d["vt"] == 0:
+                d["vt"] = d["vs"] / (1 - d["n"])
+            if d["n"] > 0 and d["vv"] > 0 and d["vt"] == 0:
+                d["vt"] = d["vv"] / d["n"]
+            if d["vt"] > 0 and d["vv"] > 0 and d["n"] == 0:
+                d["n"] = d["vv"] / d["vt"]
 
-            # ── Fase 4: Volumen total Vt = Vs + Vv ───────────────────────────
-            if d['vt'] > 0 and d['vs'] > 0 and d['vv'] == 0: d['vv'] = d['vt'] - d['vs']
-            if d['vt'] > 0 and d['vv'] > 0 and d['vs'] == 0: d['vs'] = d['vt'] - d['vv']
-            if d['vs'] > 0 and d['vv'] > 0 and d['vt'] == 0: d['vt'] = d['vs'] + d['vv']
+            if d["vt"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                d["vv"] = d["vt"] - d["vs"]
+            if d["vt"] > 0 and d["vv"] > 0 and d["vs"] == 0:
+                d["vs"] = d["vt"] - d["vv"]
+            if d["vs"] > 0 and d["vv"] > 0 and d["vt"] == 0:
+                d["vt"] = d["vs"] + d["vv"]
 
-            # ── Fase 5: Humedad w, Ww, Ws ────────────────────────────────────
-            if d['ws'] > 0 and d['w']  > 0 and d['ww'] == 0: d['ww'] = d['ws'] * d['w']
-            if d['ws'] > 0 and d['ww'] > 0 and d['w']  == 0: d['w']  = d['ww'] / d['ws']
-            if d['w']  > 0 and d['ww'] > 0 and d['ws'] == 0: d['ws'] = d['ww'] / d['w']
+            if d["ws"] > 0 and d["w"] > 0 and d["ww"] == 0:
+                d["ww"] = d["ws"] * d["w"]
+            if d["ws"] > 0 and d["ww"] > 0 and d["w"] == 0:
+                d["w"] = d["ww"] / d["ws"]
+            if d["w"] > 0 and d["ww"] > 0 and d["ws"] == 0:
+                d["ws"] = d["ww"] / d["w"]
 
-            # ── Fase 6: Vw = Ww (densidad agua = 1 g/cm³) ───────────────────
-            if d['ww'] > 0 and d['vw'] == 0: d['vw'] = d['ww']
-            if d['vw'] > 0 and d['ww'] == 0: d['ww'] = d['vw']
+            if d["ww"] > 0 and d["vw"] == 0:
+                d["vw"] = d["ww"]
+            if d["vw"] > 0 and d["ww"] == 0:
+                d["ww"] = d["vw"]
 
-            # ── Fase 7: Saturación S, Vw, Vv ────────────────────────────────
-            if d['vw'] > 0 and d['vv'] > 0 and d['s']  == 0: d['s']  = d['vw'] / d['vv']
-            if d['s']  > 0 and d['vv'] > 0 and d['vw'] == 0: d['vw'] = d['s']  * d['vv']
-            if d['s']  > 0 and d['vw'] > 0 and d['vv'] == 0: d['vv'] = d['vw'] / d['s']
+            if d["vw"] > 0 and d["vv"] > 0 and d["s"] == 0:
+                d["s"] = d["vw"] / d["vv"]
+            if d["s"] > 0 and d["vv"] > 0 and d["vw"] == 0:
+                d["vw"] = d["s"] * d["vv"]
+            if d["s"] > 0 and d["vw"] > 0 and d["vv"] == 0:
+                d["vv"] = d["vw"] / d["s"]
 
-            # ── Fase 8: Relación fundamental  w = S·e/Gs ─────────────────────
-            if d['gs'] > 0 and d['s'] > 0 and d['e'] > 0 and d['w'] == 0:
-                d['w'] = (d['s'] * d['e']) / d['gs']
-            if d['gs'] > 0 and d['w'] > 0 and d['e'] > 0 and d['s'] == 0:
-                d['s'] = (d['w'] * d['gs']) / d['e']
-            if d['gs'] > 0 and d['w'] > 0 and d['s'] > 0 and d['e'] == 0:
-                d['e'] = (d['w'] * d['gs']) / d['s']
-            if d['w'] > 0 and d['s'] > 0 and d['e'] > 0 and d['gs'] == 0:
-                d['gs'] = (d['s'] * d['e']) / d['w']
-
-            # ── Fase 9: Peso total Wm = Ws + Ww ──────────────────────────────
-            if d['wm'] > 0 and d['ws'] > 0 and d['ww'] == 0: d['ww'] = d['wm'] - d['ws']
-            if d['wm'] > 0 and d['ww'] > 0 and d['ws'] == 0: d['ws'] = d['wm'] - d['ww']
-            if d['ws'] > 0 and d['ww'] > 0 and d['wm'] == 0: d['wm'] = d['ws'] + d['ww']
-
-            # ── Fase 10: Volumen de aire Va = Vv - Vw ────────────────────────
-            if d['vv'] > 0 and d['vw'] > 0 and d['va'] == 0: d['va'] = max(0.0, d['vv'] - d['vw'])
-            if d['vv'] > 0 and d['va'] > 0 and d['vw'] == 0: d['vw'] = d['vv'] - d['va']
-            if d['vw'] > 0 and d['va'] > 0 and d['vv'] == 0: d['vv'] = d['vw'] + d['va']
-
-            # ── Fase 11: Pesos unitarios γ (usando γw = 1 g/cm³ = 9.81 kN/m³)─
-            if d['wm'] > 0 and d['vt'] > 0 and d['gh'] == 0: d['gh'] = d['wm'] / d['vt']
-            if d['gh'] > 0 and d['vt'] > 0 and d['wm'] == 0: d['wm'] = d['gh'] * d['vt']
-            if d['gh'] > 0 and d['wm'] > 0 and d['vt'] == 0: d['vt'] = d['wm'] / d['gh']
-
-            if d['ws'] > 0 and d['vt'] > 0 and d['gd'] == 0: d['gd'] = d['ws'] / d['vt']
-            if d['gd'] > 0 and d['vt'] > 0 and d['ws'] == 0: d['ws'] = d['gd'] * d['vt']
-            if d['gd'] > 0 and d['ws'] > 0 and d['vt'] == 0: d['vt'] = d['ws'] / d['gd']
-
-            # ── Fase 12: Relación γd = γh / (1 + w) ─────────────────────────
-            if d['gh'] > 0 and d['w'] > 0 and d['gd'] == 0:
-                d['gd'] = d['gh'] / (1 + d['w'])
-            if d['gd'] > 0 and d['w'] > 0 and d['gh'] == 0:
-                d['gh'] = d['gd'] * (1 + d['w'])
-            if d['gh'] > 0 and d['gd'] > 0 and d['gh'] > d['gd'] and d['w'] == 0:
-                d['w'] = (d['gh'] / d['gd']) - 1
-
-        st.session_state.base_calc = d.copy()
-        st.session_state.slider_key = np.random.randint(1, 999)
-        st.rerun()
-
-    if 'base_calc' in st.session_state:
-        st.markdown("---")
-        c_sim, c_res = st.columns([1.2, 1.8])
-        bc = st.session_state.base_calc
-        sk = st.session_state.slider_key
-
-        with c_sim:
-            st.subheader("🕹️ 2. Simulador")
-            
-            e_def = float(bc['e'])
-            w_def = float(bc['w'] * 100)
-            s_def = float(bc['s'] * 100)
-            ws_def = float(bc['ws'])
-            if ws_def == 0 and bc['wm'] > 0: ws_def = bc['wm'] / (1 + bc['w'])
-            
-            errores = []
-            if e_def == 0: errores.append("Relación de vacíos (e)")
-            if ws_def == 0 and modo == "Metas (Laboratorio)": errores.append("Peso de Sólidos (Ws)")
-            
-            if errores:
-                st.error(f"⚠️ **Faltan datos:** No se pudo deducir {', '.join(errores)}.")
-
-            e_val = st.slider("Relación de vacíos (e)", 0.0, 5.0, e_def, key=f"sl_e_{sk}")
-            w_val = st.slider("Humedad (w %)", 0.0, 100.0, w_def, key=f"sl_w_{sk}") / 100
-            s_val = st.slider("Saturación (S %)", 0.0, 100.0, s_def, key=f"sl_s_{sk}") / 100
-            ws_val = st.slider("Peso Sólidos (Ws)", 0.0, 5000.0, ws_def, key=f"sl_ws_{sk}")
-            
-            # Recálculo Final basado en Sliders
-            f = {k: 0.0 for k in diccionario_maestro.keys()}
-            f['gs'] = bc['gs'] if bc['gs'] > 0 else 2.65
-            f['e'], f['ws'] = e_val, ws_val
-            
-            if modo == "Académico (Base Vs=1)":
-                f['vs'] = 1.0
-                f['ws'] = f['gs'] * f['vs']
-            else:
-                f['vs'] = f['ws'] / f['gs'] if f['gs'] > 0 else 0
-            
-            f['vv'] = f['e'] * f['vs']
-            
-            if s_val > 0:
-                f['s'], f['vw'] = s_val, s_val * f['vv']
-                f['ww'] = f['vw']
-                f['w'] = f['ww'] / f['ws'] if f['ws'] > 0 else 0
-            else:
-                f['w'], f['ww'] = w_val, f['ws'] * w_val
-                f['vw'] = f['ww']
-                f['s'] = f['vw'] / f['vv'] if f['vv'] > 0 else 0
-
-            f['vt'], f['va'] = f['vs'] + f['vv'], max(0.0, f['vv'] - f['vw'])
-            f['wm'], f['n'] = f['ws'] + f['ww'], (f['vv'] / (f['vs'] + f['vv']) if (f['vs'] + f['vv']) > 0 else 0)
-
-            if st.button("🔄 Reiniciar"):
-                del st.session_state.base_calc
-                st.rerun()
-
-        with c_res:
-            st.subheader("📊 Resultados")
-            gamma_h = (f['wm']/f['vt'])*9.81 if f['vt'] > 0 else 0
-            gamma_d = (f['ws']/f['vt'])*9.81 if f['vt'] > 0 else 0
-            res_df = pd.DataFrame({"Propiedad": list(diccionario_maestro.values()), 
-                "Valor": [f"{f['gs']:.3f}", f"{f['e']:.4f}", f"{f['n']*100:.2f}%", f"{f['w']*100:.2f}%", f"{f['s']*100:.2f}%", f"{f['wm']:.2f} g", f"{f['ws']:.2f} g", f"{f['ww']:.2f} g", f"{f['vt']:.2f} cm³", f"{f['vs']:.2f} cm³", f"{f['vv']:.2f} cm³", f"{f['vw']:.2f} cm³", f"{f['va']:.2f} cm³", f"{gamma_h:.2f} kN/m³", f"{gamma_d:.2f} kN/m³"]})
-            st.table(res_df)
-            st.session_state.df_excel = res_df
-            fig = go.Figure(data=[go.Bar(name='Sólidos', x=['Fases'], y=[f['vs']], marker_color='#7E5109'), go.Bar(name='Agua', x=['Fases'], y=[f['vw']], marker_color='#3498DB'), go.Bar(name='Aire', x=['Fases'], y=[f['va']], marker_color='#BDC3C7')])
-            fig.update_layout(barmode='stack', height=350); st.plotly_chart(fig, use_container_width=True)
+            if d["gs"] > 0 and d["s"] > 0 and d["e"] > 0 and d["w"] == 0:
+                d["w"] = (d["s"] * d["e"])
