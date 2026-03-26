@@ -825,7 +825,7 @@ with tabs[0]:
             st.warning("⚠️ No hay suficientes datos para generar el diagrama de fases. Asegúrate de ingresar al menos Gs y un volumen o peso que permita calcular Vs y Vt.")
 
                 st.markdown("---")
-                st.subheader("📋 3. Tabla de Resultados")
+            st.subheader("📋 3. Tabla de Resultados")
 
         # --- SLIDERS DINÁMICOS ---
         st.markdown("### 🎚️ Ajuste Visual de Fases")
