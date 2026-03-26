@@ -854,7 +854,7 @@ with tabs[1]:
         st.markdown("### Diagrama de Fases")
         if d["vs"] > 0 and d["vt"] > 0:
             fig2 = build_phase_diagram(d, gamma_h, gamma_d, _u_vol, _u_peso, _u_dens, _fv, _fp, _fd)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, use_container_width=True, key="diagrama_fases_final")
 
         st.markdown("---")
         st.markdown("### Tabla completa de variables")
