@@ -811,43 +811,36 @@ with tabs[0]:
                 st.warning("El motor no recibió ningún valor. ¿Seleccionaste las variables y escribiste los datos?")
 
     # ── MOSTRAR RESULTADOS (fuera del bloque del botón) ───────────────────────
+    
+        # --- DICCIONARIO DE RESULTADOS (Ahora sí, con valores actualizados) ---
+        resultados = {
+            "Variable": [
+                "Vs (Volumen sólidos)", "Vw (Volumen agua    # --- MOSTRAR RESULTADOS (Línea 814) ---
     if "resultado" in st.session_state:
         d = st.session_state["resultado"]
-        gamma_h = st.session_state["gamma_h"]
-        gamma_d = st.session_state["gamma_d"]
+        gamma_h = st.session_state.get("gamma_h", 0)
+        gamma_d = st.session_state.get("gamma_d", 0)
 
-        if d["vs"] > 0 and d["vt"] > 0:
-            st.markdown("---")
-            st.subheader("📊 2. Diagrama de Fases")
-            fig = build_phase_diagram(d, gamma_h, gamma_d, u_vol, u_peso, u_dens, fv, fp, fd)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("⚠️ No hay suficientes datos para generar el diagrama de fases. Asegúrate de ingresar al menos Gs y un volumen o peso que permita calcular Vs y Vt.")
-
-                st.markdown("---")
-            st.subheader("📋 3. Tabla de Resultados")
+        st.markdown("---")
+        st.subheader("📋 3. Tabla de Resultados")
 
         # --- SLIDERS DINÁMICOS ---
         st.markdown("### 🎚️ Ajuste Visual de Fases")
         c1, c2, c3 = st.columns(3)
         with c1:
-            d["vs"] = st.slider("Vol. Sólido (Vs)", 0.1, 10.0, float(d["vs"] or 1.0), key="s_vs")
+            d["vs"] = st.slider("Vol. Sólido (Vs)", 0.1, 10.0, float(d.get("vs", 1.0)), key="s_vs")
         with c2:
-            d["vw"] = st.slider("Vol. Agua (Vw)", 0.0, 10.0, float(d["vw"] or 0.5), key="s_vw")
+            d["vw"] = st.slider("Vol. Agua (Vw)", 0.0, 10.0, float(d.get("vw", 0.5)), key="s_vw")
         with c3:
-            d["va"] = st.slider("Vol. Aire (Va)", 0.0, 10.0, float(d["va"] or 0.2), key="s_va")
+            d["va"] = st.slider("Vol. Aire (Va)", 0.0, 10.0, float(d.get("va", 0.2)), key="s_va")
 
-        # Recalcular variables dependientes de los sliders
+        # Recalcular variables dependientes
         d["vv"] = d["vw"] + d["va"]
         d["vt"] = d["vs"] + d["vv"]
         d["e"] = d["vv"] / d["vs"] if d["vs"] > 0 else 0
         d["n"] = d["vv"] / d["vt"] if d["vt"] > 0 else 0
         d["s"] = d["vw"] / d["vv"] if d["vv"] > 0 else 0
-
-        # --- DICCIONARIO DE RESULTADOS (Ahora sí, con valores actualizados) ---
-        resultados = {
-            "Variable": [
-                "Vs (Volumen sólidos)", "Vw (Volumen agua)", "Va (Volumen aire)",
+)", "Va (Volumen aire)",
                 "Vv (Volumen vacíos)", "Vt (Volumen total)",
                 "Ws (Peso sólidos)", "Ww (Peso agua)", "Wt (Peso total)",
                 "e (Relación de vacíos)", "n (Porosidad)",
