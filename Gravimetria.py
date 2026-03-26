@@ -666,3 +666,147 @@ with tabs[0]:
 
             if d["gs"] > 0 and d["s"] > 0 and d["e"] > 0 and d["w"] == 0:
                 d["w"] = (d["s"] * d["e"])
+
+            if d["gh"] > 0 and d["vt"] > 0 and d["wm"] == 0:
+                d["wm"] = d["gh"] * d["vt"]
+            if d["gd"] > 0 and d["vt"] > 0 and d["ws"] == 0:
+                d["ws"] = d["gd"] * d["vt"]
+            if d["wm"] > 0 and d["vt"] > 0 and d["gh"] == 0:
+                d["gh"] = d["wm"] / d["vt"]
+            if d["ws"] > 0 and d["vt"] > 0 and d["gd"] == 0:
+                d["gd"] = d["ws"] / d["vt"]
+
+            if d["wm"] > 0 and d["ws"] > 0 and d["ww"] == 0:
+                d["ww"] = d["wm"] - d["ws"]
+            if d["wm"] > 0 and d["ww"] > 0 and d["ws"] == 0:
+                d["ws"] = d["wm"] - d["ww"]
+            if d["ws"] > 0 and d["ww"] > 0 and d["wm"] == 0:
+                d["wm"] = d["ws"] + d["ww"]
+
+            if d["vv"] > 0 and d["vw"] > 0 and d["va"] == 0:
+                d["va"] = d["vv"] - d["vw"]
+            if d["vv"] > 0 and d["va"] > 0 and d["vw"] == 0:
+                d["vw"] = d["vv"] - d["va"]
+
+        # ── VALORES FINALES DERIVADOS ─────────────────────────────────────────
+        d["vv"] = d["vv"] if d["vv"] > 0 else max(d["vt"] - d["vs"], 0)
+        d["va"] = max(d["vv"] - d["vw"], 0)
+        d["wm"] = d["ws"] + d["ww"] if d["wm"] == 0 else d["wm"]
+
+        gamma_h = d["wm"] / d["vt"] if d["vt"] > 0 else 0
+        gamma_d = d["ws"] / d["vt"] if d["vt"] > 0 else 0
+
+        # ── MOSTRAR DIAGRAMA DE FASES ─────────────────────────────────────────
+        if d["vs"] > 0 and d["vt"] > 0:
+            st.markdown("---")
+            st.subheader("📊 2. Diagrama de Fases")
+            fig = build_phase_diagram(d, gamma_h, gamma_d, u_vol, u_peso, u_dens, fv, fp, fd)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ No hay suficientes datos para generar el diagrama de fases.")
+
+        # ── TABLA DE RESULTADOS ───────────────────────────────────────────────
+        st.markdown("---")
+        st.subheader("📋 3. Tabla de Resultados")
+
+        resultados = {
+            "Variable": [
+                "Vs (Volumen sólidos)", "Vw (Volumen agua)", "Va (Volumen aire)",
+                "Vv (Volumen vacíos)", "Vt (Volumen total)",
+                "Ws (Peso sólidos)", "Ww (Peso agua)", "Wt (Peso total)",
+                "e (Relación de vacíos)", "n (Porosidad)",
+                "S (Saturación)", "w (Humedad)", "Gs (Gravedad específica)",
+                "γh (Unitario húmedo)", "γd (Unitario seco)",
+            ],
+            "Valor calculado": [
+                fmt_vol(d["vs"]), fmt_vol(d["vw"]), fmt_vol(d["va"]),
+                fmt_vol(d["vv"]), fmt_vol(d["vt"]),
+                fmt_peso(d["ws"]), fmt_peso(d["ww"]), fmt_peso(d["wm"]),
+                f"{d['e']:.4f}", f"{d['n'] * 100:.2f} %",
+                f"{d['s'] * 100:.2f} %", f"{d['w'] * 100:.2f} %",
+                f"{d['gs']:.4f}",
+                fmt_dens(gamma_h), fmt_dens(gamma_d),
+            ],
+        }
+
+        df_res = pd.DataFrame(resultados)
+        st.dataframe(df_res, use_container_width=True, hide_index=True)
+
+        # Guardar en session_state para el reporte
+        st.session_state["resultado"] = d
+        st.session_state["gamma_h"] = gamma_h
+        st.session_state["gamma_d"] = gamma_d
+        st.session_state["u_vol"] = u_vol
+        st.session_state["u_peso"] = u_peso
+        st.session_state["u_dens"] = u_dens
+        st.session_state["fv"] = fv
+        st.session_state["fp"] = fp
+        st.session_state["fd"] = fd
+        st.session_state["modo"] = modo
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PESTAÑA 2: REPORTE FINAL
+# ══════════════════════════════════════════════════════════════════════════════
+with tabs[1]:
+    st.subheader("📥 Reporte Final")
+    if "resultado" not in st.session_state:
+        st.info("ℹ️ Primero calcula los datos en la pestaña **Gravimetría & Fases**.")
+    else:
+        d = st.session_state["resultado"]
+        gamma_h = st.session_state["gamma_h"]
+        gamma_d = st.session_state["gamma_d"]
+        _u_vol = st.session_state["u_vol"]
+        _u_peso = st.session_state["u_peso"]
+        _u_dens = st.session_state["u_dens"]
+        _fv = st.session_state["fv"]
+        _fp = st.session_state["fp"]
+        _fd = st.session_state["fd"]
+
+        def _fmt_vol(v): return f"{v * _fv:.4f} {_u_vol}"
+        def _fmt_peso(v): return f"{v * _fp:.4f} {_u_peso}"
+        def _fmt_dens(v): return f"{v * _fd:.4f} {_u_dens}"
+
+        st.markdown("### Resumen de la muestra de suelo")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("e (Relación de vacíos)", f"{d['e']:.4f}")
+        col2.metric("n (Porosidad)", f"{d['n'] * 100:.2f} %")
+        col3.metric("S (Saturación)", f"{d['s'] * 100:.2f} %")
+
+        col4, col5, col6 = st.columns(3)
+        col4.metric("w (Humedad)", f"{d['w'] * 100:.2f} %")
+        col5.metric("Gs", f"{d['gs']:.4f}")
+        col6.metric("γh", _fmt_dens(gamma_h))
+
+        st.markdown("---")
+        st.markdown("### Diagrama de Fases")
+        if d["vs"] > 0 and d["vt"] > 0:
+            fig2 = build_phase_diagram(d, gamma_h, gamma_d, _u_vol, _u_peso, _u_dens, _fv, _fp, _fd)
+            st.plotly_chart(fig2, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### Tabla completa de variables")
+        resultados_rep = {
+            "Variable": [
+                "Vs", "Vw", "Va", "Vv", "Vt",
+                "Ws", "Ww", "Wt",
+                "e", "n", "S", "w", "Gs", "γh", "γd",
+            ],
+            "Descripción": [
+                "Volumen sólidos", "Volumen agua", "Volumen aire",
+                "Volumen vacíos", "Volumen total",
+                "Peso sólidos", "Peso agua", "Peso total",
+                "Relación de vacíos", "Porosidad", "Saturación",
+                "Contenido de humedad", "Gravedad específica",
+                "Peso unitario húmedo", "Peso unitario seco",
+            ],
+            "Valor": [
+                _fmt_vol(d["vs"]), _fmt_vol(d["vw"]), _fmt_vol(d["va"]),
+                _fmt_vol(d["vv"]), _fmt_vol(d["vt"]),
+                _fmt_peso(d["ws"]), _fmt_peso(d["ww"]), _fmt_peso(d["wm"]),
+                f"{d['e']:.4f}", f"{d['n'] * 100:.2f} %",
+                f"{d['s'] * 100:.2f} %", f"{d['w'] * 100:.2f} %",
+                f"{d['gs']:.4f}",
+                _fmt_dens(gamma_h), _fmt_dens(gamma_d),
+            ],
+        }
+        st.dataframe(pd.DataFrame(resultados_rep), use_container_width=True, hide_index=True)
