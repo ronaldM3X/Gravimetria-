@@ -14,7 +14,7 @@ st.sidebar.markdown("---")
 st.title(f"🏗️ Geotecnia Master - Modo {modo.split()[0]}")
 
 # --- PESTAÑAS ---
-tabs = st.tabs(["🧩 Gravimetría & Fases", "🗂️ Perfil de Presiones", "📈 Plasticidad & SUCS", "📥 Reporte Final"])
+tabs = st.tabs(["🧩 Gravimetría & Fases", "📥 Reporte Final"])
 
 # --- PESTAÑA 1: GRAVIMETRÍA ---
 with tabs[0]:
