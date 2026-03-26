@@ -621,9 +621,10 @@ with tabs[0]:
                 d[k] = v / 100.0 if k in ["w", "n", "s"] and v > 1.0 else v
 
             # ── MOTOR DE INFERENCIA ──────────────────────────────────────────
-            for _ in range(200):
+            for _ in range(300):
                 prev = dict(d)
 
+                # --- Gs, Ws, Vs ---
                 if d["gs"] > 0 and d["ws"] > 0 and d["vs"] == 0:
                     d["vs"] = d["ws"] / d["gs"]
                 if d["gs"] > 0 and d["vs"] > 0 and d["ws"] == 0:
@@ -631,47 +632,35 @@ with tabs[0]:
                 if d["ws"] > 0 and d["vs"] > 0 and d["gs"] == 0:
                     d["gs"] = d["ws"] / d["vs"]
 
-                if d["vv"] > 0 and d["vs"] > 0 and d["e"] == 0:
-                    d["e"] = d["vv"] / d["vs"]
-                if d["e"] > 0 and d["vs"] > 0 and d["vv"] == 0:
-                    d["vv"] = d["e"] * d["vs"]
-                if d["e"] > 0 and d["vv"] > 0 and d["vs"] == 0:
-                    d["vs"] = d["vv"] / d["e"]
+                # --- Pesos: Wt = Ws + Ww ---
+                if d["wm"] > 0 and d["ws"] > 0 and d["ww"] == 0:
+                    d["ww"] = d["wm"] - d["ws"]
+                if d["wm"] > 0 and d["ww"] > 0 and d["ws"] == 0:
+                    d["ws"] = d["wm"] - d["ww"]
+                if d["ws"] > 0 and d["ww"] > 0 and d["wm"] == 0:
+                    d["wm"] = d["ws"] + d["ww"]
 
-                if d["e"] > 0 and d["n"] == 0:
-                    d["n"] = d["e"] / (1 + d["e"])
-                if 0 < d["n"] < 1 and d["e"] == 0:
-                    d["e"] = d["n"] / (1 - d["n"])
-                if d["n"] > 0 and d["vt"] > 0 and d["vv"] == 0:
-                    d["vv"] = d["n"] * d["vt"]
-                if d["n"] > 0 and d["vt"] > 0 and d["vs"] == 0:
-                    d["vs"] = (1 - d["n"]) * d["vt"]
-                if d["n"] > 0 and d["vs"] > 0 and d["vt"] == 0:
-                    d["vt"] = d["vs"] / (1 - d["n"])
-                if d["n"] > 0 and d["vv"] > 0 and d["vt"] == 0:
-                    d["vt"] = d["vv"] / d["n"]
-                if d["vt"] > 0 and d["vv"] > 0 and d["n"] == 0:
-                    d["n"] = d["vv"] / d["vt"]
-
-                if d["vt"] > 0 and d["vs"] > 0 and d["vv"] == 0:
-                    d["vv"] = d["vt"] - d["vs"]
-                if d["vt"] > 0 and d["vv"] > 0 and d["vs"] == 0:
-                    d["vs"] = d["vt"] - d["vv"]
-                if d["vs"] > 0 and d["vv"] > 0 and d["vt"] == 0:
-                    d["vt"] = d["vs"] + d["vv"]
-
+                # --- Humedad: w = Ww/Ws  →  Ws = Wt/(1+w), Ww = Wt*w/(1+w) ---
                 if d["ws"] > 0 and d["w"] > 0 and d["ww"] == 0:
                     d["ww"] = d["ws"] * d["w"]
                 if d["ws"] > 0 and d["ww"] > 0 and d["w"] == 0:
                     d["w"] = d["ww"] / d["ws"]
                 if d["w"] > 0 and d["ww"] > 0 and d["ws"] == 0:
                     d["ws"] = d["ww"] / d["w"]
+                # Wt + w conocidos → Ws
+                if d["wm"] > 0 and d["w"] > 0 and d["ws"] == 0:
+                    d["ws"] = d["wm"] / (1.0 + d["w"])
+                # Ws + w conocidos → Wt
+                if d["ws"] > 0 and d["w"] > 0 and d["wm"] == 0:
+                    d["wm"] = d["ws"] * (1.0 + d["w"])
 
+                # --- Vw = Ww (densidad agua = 1 g/cm³) ---
                 if d["ww"] > 0 and d["vw"] == 0:
                     d["vw"] = d["ww"]
                 if d["vw"] > 0 and d["ww"] == 0:
                     d["ww"] = d["vw"]
 
+                # --- Saturación: S = Vw/Vv ---
                 if d["vw"] > 0 and d["vv"] > 0 and d["s"] == 0:
                     d["s"] = d["vw"] / d["vv"]
                 if d["s"] > 0 and d["vv"] > 0 and d["vw"] == 0:
@@ -679,9 +668,47 @@ with tabs[0]:
                 if d["s"] > 0 and d["vw"] > 0 and d["vv"] == 0:
                     d["vv"] = d["vw"] / d["s"]
 
-                if d["gs"] > 0 and d["s"] > 0 and d["e"] > 0 and d["w"] == 0:
-                    d["w"] = d["s"] * d["e"] / d["gs"]
+                # --- Relación de vacíos: e = Vv/Vs ---
+                if d["vv"] > 0 and d["vs"] > 0 and d["e"] == 0:
+                    d["e"] = d["vv"] / d["vs"]
+                if d["e"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["e"] * d["vs"]
+                if d["e"] > 0 and d["vv"] > 0 and d["vs"] == 0:
+                    d["vs"] = d["vv"] / d["e"]
 
+                # --- Porosidad: n = e/(1+e) = Vv/Vt ---
+                if d["e"] > 0 and d["n"] == 0:
+                    d["n"] = d["e"] / (1.0 + d["e"])
+                if 0 < d["n"] < 1 and d["e"] == 0:
+                    d["e"] = d["n"] / (1.0 - d["n"])
+                if d["n"] > 0 and d["vt"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["n"] * d["vt"]
+                if d["n"] > 0 and d["vt"] > 0 and d["vs"] == 0:
+                    d["vs"] = (1.0 - d["n"]) * d["vt"]
+                if d["n"] > 0 and d["vs"] > 0 and d["vt"] == 0:
+                    d["vt"] = d["vs"] / (1.0 - d["n"])
+                if d["n"] > 0 and d["vv"] > 0 and d["vt"] == 0:
+                    d["vt"] = d["vv"] / d["n"]
+                if d["vt"] > 0 and d["vv"] > 0 and d["n"] == 0:
+                    d["n"] = d["vv"] / d["vt"]
+
+                # --- Volúmenes: Vt = Vs + Vv ---
+                if d["vt"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["vt"] - d["vs"]
+                if d["vt"] > 0 and d["vv"] > 0 and d["vs"] == 0:
+                    d["vs"] = d["vt"] - d["vv"]
+                if d["vs"] > 0 and d["vv"] > 0 and d["vt"] == 0:
+                    d["vt"] = d["vs"] + d["vv"]
+
+                # --- Vacíos: Vv = Vw + Va ---
+                if d["vv"] > 0 and d["vw"] > 0 and d["va"] == 0:
+                    d["va"] = d["vv"] - d["vw"]
+                if d["vv"] > 0 and d["va"] > 0 and d["vw"] == 0:
+                    d["vw"] = d["vv"] - d["va"]
+                if d["vw"] > 0 and d["va"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["vw"] + d["va"]
+
+                # --- Pesos unitarios: γh = Wt/Vt, γd = Ws/Vt ---
                 if d["gh"] > 0 and d["vt"] > 0 and d["wm"] == 0:
                     d["wm"] = d["gh"] * d["vt"]
                 if d["gd"] > 0 and d["vt"] > 0 and d["ws"] == 0:
@@ -691,17 +718,25 @@ with tabs[0]:
                 if d["ws"] > 0 and d["vt"] > 0 and d["gd"] == 0:
                     d["gd"] = d["ws"] / d["vt"]
 
-                if d["wm"] > 0 and d["ws"] > 0 and d["ww"] == 0:
-                    d["ww"] = d["wm"] - d["ws"]
-                if d["wm"] > 0 and d["ww"] > 0 and d["ws"] == 0:
-                    d["ws"] = d["wm"] - d["ww"]
-                if d["ws"] > 0 and d["ww"] > 0 and d["wm"] == 0:
-                    d["wm"] = d["ws"] + d["ww"]
+                # --- Relación S·e = w·Gs ---
+                if d["gs"] > 0 and d["s"] > 0 and d["e"] > 0 and d["w"] == 0:
+                    d["w"] = d["s"] * d["e"] / d["gs"]
+                if d["gs"] > 0 and d["w"] > 0 and d["e"] > 0 and d["s"] == 0:
+                    d["s"] = d["w"] * d["gs"] / d["e"]
+                if d["gs"] > 0 and d["w"] > 0 and d["s"] > 0 and d["e"] == 0:
+                    d["e"] = d["w"] * d["gs"] / d["s"]
 
-                if d["vv"] > 0 and d["vw"] > 0 and d["va"] == 0:
-                    d["va"] = d["vv"] - d["vw"]
-                if d["vv"] > 0 and d["va"] > 0 and d["vw"] == 0:
-                    d["vw"] = d["vv"] - d["va"]
+                # --- γd = γh/(1+w) ---
+                if d["gh"] > 0 and d["w"] > 0 and d["gd"] == 0:
+                    d["gd"] = d["gh"] / (1.0 + d["w"])
+                if d["gd"] > 0 and d["w"] > 0 and d["gh"] == 0:
+                    d["gh"] = d["gd"] * (1.0 + d["w"])
+
+                # --- γd = Gs·γw/(1+e) donde γw=1 ---
+                if d["gs"] > 0 and d["e"] > 0 and d["gd"] == 0:
+                    d["gd"] = d["gs"] / (1.0 + d["e"])
+                if d["gd"] > 0 and d["gs"] > 0 and d["e"] == 0:
+                    d["e"] = d["gs"] / d["gd"] - 1.0
 
                 if d == prev:
                     break
