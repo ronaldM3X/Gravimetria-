@@ -581,131 +581,163 @@ with tabs[0]:
         "Variables conocidas:",
         options=list(diccionario_maestro.keys()),
         format_func=lambda x: diccionario_maestro[x],
+        key="seleccionados",
     )
 
     inputs = {}
-    cols_in = st.columns(3)
-    for i, clave in enumerate(seleccionados):
-        inputs[clave] = cols_in[i % 3].number_input(
-            f"{diccionario_maestro[clave]}", value=0.0, format="%.4f", key=f"in_{clave}"
-        )
+    if seleccionados:
+        cols_in = st.columns(3)
+        for i, clave in enumerate(seleccionados):
+            inputs[clave] = cols_in[i % 3].number_input(
+                f"{diccionario_maestro[clave]}", value=0.0, format="%.6f", key=f"in_{clave}"
+            )
 
-    if st.button("🚀 Calcular Base"):
+    calcular = st.button("🚀 Calcular Base")
+
+    if calcular:
         tiene_peso = any(k in inputs and inputs[k] > 0 for k in ["ws", "wm", "ww"])
         tiene_volumen = any(
             k in inputs and inputs[k] > 0 for k in ["vs", "vt", "vv", "vw", "va"]
         )
 
         if modo == "Metas (Laboratorio)" and not (tiene_peso or tiene_volumen):
-            st.error("❌ Datos insuficientes. Ingresa al menos un Peso o un Volumen.")
-            st.stop()
+            st.session_state["error_calculo"] = "❌ Datos insuficientes. Ingresa al menos un Peso o un Volumen con valor mayor a cero."
+            st.session_state.pop("resultado", None)
+        else:
+            st.session_state.pop("error_calculo", None)
 
-        d = {k: 0.0 for k in diccionario_maestro.keys()}
-        if modo == "Académico (Base Vs=1)":
-            d["vs"] = 1.0
+            d = {k: 0.0 for k in diccionario_maestro.keys()}
+            if modo == "Académico (Base Vs=1)":
+                d["vs"] = 1.0
 
-        for k, v in inputs.items():
-            d[k] = v / 100 if k in ["w", "n", "s"] and v > 1.0 else v
+            for k, v in inputs.items():
+                d[k] = v / 100.0 if k in ["w", "n", "s"] and v > 1.0 else v
 
-        # ── MOTOR DE INFERENCIA ──────────────────────────────────────────────
-        for _ in range(100):
-            if d["gs"] > 0 and d["ws"] > 0 and d["vs"] == 0:
-                d["vs"] = d["ws"] / d["gs"]
-            if d["gs"] > 0 and d["vs"] > 0 and d["ws"] == 0:
-                d["ws"] = d["gs"] * d["vs"]
-            if d["ws"] > 0 and d["vs"] > 0 and d["gs"] == 0:
-                d["gs"] = d["ws"] / d["vs"]
+            # ── MOTOR DE INFERENCIA ──────────────────────────────────────────
+            for _ in range(200):
+                prev = dict(d)
 
-            if d["vv"] > 0 and d["vs"] > 0 and d["e"] == 0:
-                d["e"] = d["vv"] / d["vs"]
-            if d["e"] > 0 and d["vs"] > 0 and d["vv"] == 0:
-                d["vv"] = d["e"] * d["vs"]
-            if d["e"] > 0 and d["vv"] > 0 and d["vs"] == 0:
-                d["vs"] = d["vv"] / d["e"]
+                if d["gs"] > 0 and d["ws"] > 0 and d["vs"] == 0:
+                    d["vs"] = d["ws"] / d["gs"]
+                if d["gs"] > 0 and d["vs"] > 0 and d["ws"] == 0:
+                    d["ws"] = d["gs"] * d["vs"]
+                if d["ws"] > 0 and d["vs"] > 0 and d["gs"] == 0:
+                    d["gs"] = d["ws"] / d["vs"]
 
-            if d["e"] > 0 and d["n"] == 0:
-                d["n"] = d["e"] / (1 + d["e"])
-            if 0 < d["n"] < 1 and d["e"] == 0:
-                d["e"] = d["n"] / (1 - d["n"])
-            if d["n"] > 0 and d["vt"] > 0 and d["vv"] == 0:
-                d["vv"] = d["n"] * d["vt"]
-            if d["n"] > 0 and d["vt"] > 0 and d["vs"] == 0:
-                d["vs"] = (1 - d["n"]) * d["vt"]
-            if d["n"] > 0 and d["vs"] > 0 and d["vt"] == 0:
-                d["vt"] = d["vs"] / (1 - d["n"])
-            if d["n"] > 0 and d["vv"] > 0 and d["vt"] == 0:
-                d["vt"] = d["vv"] / d["n"]
-            if d["vt"] > 0 and d["vv"] > 0 and d["n"] == 0:
-                d["n"] = d["vv"] / d["vt"]
+                if d["vv"] > 0 and d["vs"] > 0 and d["e"] == 0:
+                    d["e"] = d["vv"] / d["vs"]
+                if d["e"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["e"] * d["vs"]
+                if d["e"] > 0 and d["vv"] > 0 and d["vs"] == 0:
+                    d["vs"] = d["vv"] / d["e"]
 
-            if d["vt"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                if d["e"] > 0 and d["n"] == 0:
+                    d["n"] = d["e"] / (1 + d["e"])
+                if 0 < d["n"] < 1 and d["e"] == 0:
+                    d["e"] = d["n"] / (1 - d["n"])
+                if d["n"] > 0 and d["vt"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["n"] * d["vt"]
+                if d["n"] > 0 and d["vt"] > 0 and d["vs"] == 0:
+                    d["vs"] = (1 - d["n"]) * d["vt"]
+                if d["n"] > 0 and d["vs"] > 0 and d["vt"] == 0:
+                    d["vt"] = d["vs"] / (1 - d["n"])
+                if d["n"] > 0 and d["vv"] > 0 and d["vt"] == 0:
+                    d["vt"] = d["vv"] / d["n"]
+                if d["vt"] > 0 and d["vv"] > 0 and d["n"] == 0:
+                    d["n"] = d["vv"] / d["vt"]
+
+                if d["vt"] > 0 and d["vs"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["vt"] - d["vs"]
+                if d["vt"] > 0 and d["vv"] > 0 and d["vs"] == 0:
+                    d["vs"] = d["vt"] - d["vv"]
+                if d["vs"] > 0 and d["vv"] > 0 and d["vt"] == 0:
+                    d["vt"] = d["vs"] + d["vv"]
+
+                if d["ws"] > 0 and d["w"] > 0 and d["ww"] == 0:
+                    d["ww"] = d["ws"] * d["w"]
+                if d["ws"] > 0 and d["ww"] > 0 and d["w"] == 0:
+                    d["w"] = d["ww"] / d["ws"]
+                if d["w"] > 0 and d["ww"] > 0 and d["ws"] == 0:
+                    d["ws"] = d["ww"] / d["w"]
+
+                if d["ww"] > 0 and d["vw"] == 0:
+                    d["vw"] = d["ww"]
+                if d["vw"] > 0 and d["ww"] == 0:
+                    d["ww"] = d["vw"]
+
+                if d["vw"] > 0 and d["vv"] > 0 and d["s"] == 0:
+                    d["s"] = d["vw"] / d["vv"]
+                if d["s"] > 0 and d["vv"] > 0 and d["vw"] == 0:
+                    d["vw"] = d["s"] * d["vv"]
+                if d["s"] > 0 and d["vw"] > 0 and d["vv"] == 0:
+                    d["vv"] = d["vw"] / d["s"]
+
+                if d["gs"] > 0 and d["s"] > 0 and d["e"] > 0 and d["w"] == 0:
+                    d["w"] = d["s"] * d["e"] / d["gs"]
+
+                if d["gh"] > 0 and d["vt"] > 0 and d["wm"] == 0:
+                    d["wm"] = d["gh"] * d["vt"]
+                if d["gd"] > 0 and d["vt"] > 0 and d["ws"] == 0:
+                    d["ws"] = d["gd"] * d["vt"]
+                if d["wm"] > 0 and d["vt"] > 0 and d["gh"] == 0:
+                    d["gh"] = d["wm"] / d["vt"]
+                if d["ws"] > 0 and d["vt"] > 0 and d["gd"] == 0:
+                    d["gd"] = d["ws"] / d["vt"]
+
+                if d["wm"] > 0 and d["ws"] > 0 and d["ww"] == 0:
+                    d["ww"] = d["wm"] - d["ws"]
+                if d["wm"] > 0 and d["ww"] > 0 and d["ws"] == 0:
+                    d["ws"] = d["wm"] - d["ww"]
+                if d["ws"] > 0 and d["ww"] > 0 and d["wm"] == 0:
+                    d["wm"] = d["ws"] + d["ww"]
+
+                if d["vv"] > 0 and d["vw"] > 0 and d["va"] == 0:
+                    d["va"] = d["vv"] - d["vw"]
+                if d["vv"] > 0 and d["va"] > 0 and d["vw"] == 0:
+                    d["vw"] = d["vv"] - d["va"]
+
+                if d == prev:
+                    break
+
+            # ── VALORES FINALES DERIVADOS ─────────────────────────────────────
+            if d["vv"] == 0 and d["vt"] > 0 and d["vs"] > 0:
                 d["vv"] = d["vt"] - d["vs"]
-            if d["vt"] > 0 and d["vv"] > 0 and d["vs"] == 0:
-                d["vs"] = d["vt"] - d["vv"]
-            if d["vs"] > 0 and d["vv"] > 0 and d["vt"] == 0:
-                d["vt"] = d["vs"] + d["vv"]
-
-            if d["ws"] > 0 and d["w"] > 0 and d["ww"] == 0:
-                d["ww"] = d["ws"] * d["w"]
-            if d["ws"] > 0 and d["ww"] > 0 and d["w"] == 0:
-                d["w"] = d["ww"] / d["ws"]
-            if d["w"] > 0 and d["ww"] > 0 and d["ws"] == 0:
-                d["ws"] = d["ww"] / d["w"]
-
-            if d["ww"] > 0 and d["vw"] == 0:
-                d["vw"] = d["ww"]
-            if d["vw"] > 0 and d["ww"] == 0:
-                d["ww"] = d["vw"]
-
-            if d["vw"] > 0 and d["vv"] > 0 and d["s"] == 0:
-                d["s"] = d["vw"] / d["vv"]
-            if d["s"] > 0 and d["vv"] > 0 and d["vw"] == 0:
-                d["vw"] = d["s"] * d["vv"]
-            if d["s"] > 0 and d["vw"] > 0 and d["vv"] == 0:
-                d["vv"] = d["vw"] / d["s"]
-
-            if d["gs"] > 0 and d["s"] > 0 and d["e"] > 0 and d["w"] == 0:
-                d["w"] = (d["s"] * d["e"])
-
-            if d["gh"] > 0 and d["vt"] > 0 and d["wm"] == 0:
-                d["wm"] = d["gh"] * d["vt"]
-            if d["gd"] > 0 and d["vt"] > 0 and d["ws"] == 0:
-                d["ws"] = d["gd"] * d["vt"]
-            if d["wm"] > 0 and d["vt"] > 0 and d["gh"] == 0:
-                d["gh"] = d["wm"] / d["vt"]
-            if d["ws"] > 0 and d["vt"] > 0 and d["gd"] == 0:
-                d["gd"] = d["ws"] / d["vt"]
-
-            if d["wm"] > 0 and d["ws"] > 0 and d["ww"] == 0:
-                d["ww"] = d["wm"] - d["ws"]
-            if d["wm"] > 0 and d["ww"] > 0 and d["ws"] == 0:
-                d["ws"] = d["wm"] - d["ww"]
-            if d["ws"] > 0 and d["ww"] > 0 and d["wm"] == 0:
+            d["va"] = max(d["vv"] - d["vw"], 0)
+            if d["wm"] == 0:
                 d["wm"] = d["ws"] + d["ww"]
 
-            if d["vv"] > 0 and d["vw"] > 0 and d["va"] == 0:
-                d["va"] = d["vv"] - d["vw"]
-            if d["vv"] > 0 and d["va"] > 0 and d["vw"] == 0:
-                d["vw"] = d["vv"] - d["va"]
+            gamma_h = d["wm"] / d["vt"] if d["vt"] > 0 else 0
+            gamma_d = d["ws"] / d["vt"] if d["vt"] > 0 else 0
 
-        # ── VALORES FINALES DERIVADOS ─────────────────────────────────────────
-        d["vv"] = d["vv"] if d["vv"] > 0 else max(d["vt"] - d["vs"], 0)
-        d["va"] = max(d["vv"] - d["vw"], 0)
-        d["wm"] = d["ws"] + d["ww"] if d["wm"] == 0 else d["wm"]
+            st.session_state["resultado"] = d
+            st.session_state["gamma_h"] = gamma_h
+            st.session_state["gamma_d"] = gamma_d
+            st.session_state["u_vol"] = u_vol
+            st.session_state["u_peso"] = u_peso
+            st.session_state["u_dens"] = u_dens
+            st.session_state["fv"] = fv
+            st.session_state["fp"] = fp
+            st.session_state["fd"] = fd
+            st.session_state["modo"] = modo
 
-        gamma_h = d["wm"] / d["vt"] if d["vt"] > 0 else 0
-        gamma_d = d["ws"] / d["vt"] if d["vt"] > 0 else 0
+    # ── MOSTRAR ERROR SI LO HAY ───────────────────────────────────────────────
+    if "error_calculo" in st.session_state:
+        st.error(st.session_state["error_calculo"])
 
-        # ── MOSTRAR DIAGRAMA DE FASES ─────────────────────────────────────────
+    # ── MOSTRAR RESULTADOS (fuera del bloque del botón) ───────────────────────
+    if "resultado" in st.session_state:
+        d = st.session_state["resultado"]
+        gamma_h = st.session_state["gamma_h"]
+        gamma_d = st.session_state["gamma_d"]
+
         if d["vs"] > 0 and d["vt"] > 0:
             st.markdown("---")
             st.subheader("📊 2. Diagrama de Fases")
             fig = build_phase_diagram(d, gamma_h, gamma_d, u_vol, u_peso, u_dens, fv, fp, fd)
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("⚠️ No hay suficientes datos para generar el diagrama de fases.")
+            st.warning("⚠️ No hay suficientes datos para generar el diagrama de fases. Asegúrate de ingresar al menos Gs y un volumen o peso que permita calcular Vs y Vt.")
 
-        # ── TABLA DE RESULTADOS ───────────────────────────────────────────────
         st.markdown("---")
         st.subheader("📋 3. Tabla de Resultados")
 
@@ -731,18 +763,6 @@ with tabs[0]:
 
         df_res = pd.DataFrame(resultados)
         st.dataframe(df_res, use_container_width=True, hide_index=True)
-
-        # Guardar en session_state para el reporte
-        st.session_state["resultado"] = d
-        st.session_state["gamma_h"] = gamma_h
-        st.session_state["gamma_d"] = gamma_d
-        st.session_state["u_vol"] = u_vol
-        st.session_state["u_peso"] = u_peso
-        st.session_state["u_dens"] = u_dens
-        st.session_state["fv"] = fv
-        st.session_state["fp"] = fp
-        st.session_state["fd"] = fd
-        st.session_state["modo"] = modo
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PESTAÑA 2: REPORTE FINAL
