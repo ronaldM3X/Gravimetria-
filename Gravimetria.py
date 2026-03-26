@@ -579,6 +579,8 @@ tabs = st.tabs(["🧩 Gravimetría & Fases", "📥 Reporte Final"])
 # ══════════════════════════════════════════════════════════════════════════════
 with tabs[0]:
     st.subheader("📥 1. Entrada de Datos Iniciales")
+
+    # El multiselect va FUERA del form para que los campos aparezcan al seleccionar
     seleccionados = st.multiselect(
         "Variables conocidas:",
         options=list(diccionario_maestro.keys()),
@@ -586,24 +588,19 @@ with tabs[0]:
         key="seleccionados",
     )
 
-    inputs = {}
-    if seleccionados:
-        cols_in = st.columns(3)
-        for i, clave in enumerate(seleccionados):
-            inputs[clave] = cols_in[i % 3].number_input(
-                f"{diccionario_maestro[clave]}", value=0.0, format="%.6f", key=f"in_{clave}"
-            )
-
-    calcular = st.button("🚀 Calcular Base")
+    # Los number_inputs y el botón van DENTRO del form para evitar rerenders parciales
+    with st.form("calc_form"):
+        inputs = {}
+        if seleccionados:
+            cols_in = st.columns(3)
+            for i, clave in enumerate(seleccionados):
+                inputs[clave] = cols_in[i % 3].number_input(
+                    f"{diccionario_maestro[clave]}", value=0.0, format="%.4f", key=f"in_{clave}"
+                )
+        calcular = st.form_submit_button("🚀 Calcular Base")
 
     if calcular:
-        # Capturar los inputs directamente desde session_state para garantizar valores actuales
-        inputs_real = {}
-        for clave in seleccionados:
-            key = f"in_{clave}"
-            val = st.session_state.get(key, 0.0)
-            inputs_real[clave] = val
-
+        inputs_real = {k: v for k, v in inputs.items()}
         st.session_state["debug_inputs"] = dict(inputs_real)
 
         tiene_peso = any(inputs_real.get(k, 0) > 0 for k in ["ws", "wm", "ww"])
@@ -611,9 +608,11 @@ with tabs[0]:
 
         if modo == "Metas (Laboratorio)" and not (tiene_peso or tiene_volumen):
             st.session_state["error_calculo"] = "❌ Datos insuficientes. Ingresa al menos un Peso (Ws, Wt o Ww) o un Volumen (Vs, Vt, Vv, Vw o Va) mayor a cero."
-            st.session_state.pop("resultado", None)
+            if "resultado" in st.session_state:
+                del st.session_state["resultado"]
         else:
-            st.session_state.pop("error_calculo", None)
+            if "error_calculo" in st.session_state:
+                del st.session_state["error_calculo"]
 
             d = {k: 0.0 for k in diccionario_maestro.keys()}
             if modo == "Académico (Base Vs=1)":
