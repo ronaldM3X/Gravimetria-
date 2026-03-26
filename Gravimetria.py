@@ -16,19 +16,21 @@ st.set_page_config(
 # 2. LOGO UPB + ENCABEZADO
 # ─────────────────────────────────────────────────────────────────────────────
 def get_logo_b64():
-    try:
-        with open("assets/upb_logo.svg", "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except Exception:
-        return None
+    for fname in ["assets/upb_logo2.png", "assets/upb_logo.png"]:
+        try:
+            with open(fname, "rb") as f:
+                return base64.b64encode(f.read()).decode(), fname
+        except Exception:
+            continue
+    return None, None
 
 
-logo_b64 = get_logo_b64()
-logo_html = (
-    f'<img src="data:image/svg+xml;base64,{logo_b64}" style="height:90px; margin-right:24px; vertical-align:middle;">'
-    if logo_b64
-    else '<span style="font-size:3rem; margin-right:16px; vertical-align:middle;">🏛️</span>'
-)
+logo_b64, logo_fname = get_logo_b64()
+if logo_b64:
+    mime = "image/svg+xml" if logo_fname and logo_fname.endswith(".svg") else "image/png"
+    logo_html = f'<img src="data:{mime};base64,{logo_b64}" style="height:90px; margin-right:24px; vertical-align:middle;">'
+else:
+    logo_html = '<span style="font-size:3rem; margin-right:16px; vertical-align:middle;">🏛️</span>'
 
 st.markdown(
     f"""
